@@ -8,7 +8,10 @@ function send(res,status,data){res.writeHead(status,{'content-type':'application
 async function read(req){let s='';for await(const c of req){s+=c;if(s.length>65536)throw Error('Payload too large')}return s?JSON.parse(s):{}}
 function newId(p){return p+'-'+crypto.randomBytes(4).toString('hex')}
 function log(action,detail){state.audit.unshift({id:newId('evt'),at:new Date().toISOString(),action,detail:detail||{}});state.audit=state.audit.slice(0,200)}
-function safeSettings(){const x={...state.settings};delete x.routerPassword;x.routerPasswordConfigured=!!state.settings.routerPassword;return x}\nfunction clientKey(value){return String(value||'guest').trim().slice(0,80)||'guest'}\nfunction coinFailure(clientId){const now=Date.now(),key=clientKey(clientId),entry=state.coinFailures[key]||{count:0,blockedUntil:0};entry.count++;const limit=Math.max(1,Math.min(20,Number(state.settings.abuseLimit)||5));if(entry.count>=limit){entry.blockedUntil=now+Math.max(1,Math.min(1440,Number(state.settings.banMinutes)||10))*60000;entry.count=0}state.coinFailures[key]=entry;return entry}\nfunction coinBlocked(clientId){const entry=state.coinFailures[clientKey(clientId)];return !!entry&&entry.blockedUntil>Date.now()}
+function safeSettings(){const x={...state.settings};delete x.routerPassword;x.routerPasswordConfigured=!!state.settings.routerPassword;return x}
+function clientKey(value){return String(value||'guest').trim().slice(0,80)||'guest'}
+function coinFailure(clientId){const now=Date.now(),key=clientKey(clientId),entry=state.coinFailures[key]||{count:0,blockedUntil:0};entry.count++;const limit=Math.max(1,Math.min(20,Number(state.settings.abuseLimit)||5));if(entry.count>=limit){entry.blockedUntil=now+Math.max(1,Math.min(1440,Number(state.settings.banMinutes)||10))*60000;entry.count=0}state.coinFailures[key]=entry;return entry}
+function coinBlocked(clientId){const entry=state.coinFailures[clientKey(clientId)];return !!entry&&entry.blockedUntil>Date.now()}
 async function handler(req,res){
  const u=new URL(req.url,'http://localhost'),p=u.pathname;
  if(req.method==='OPTIONS'){res.writeHead(204,{'access-control-allow-origin':'*','access-control-allow-methods':'GET,POST,PUT,DELETE,OPTIONS','access-control-allow-headers':'content-type'});return res.end()}
