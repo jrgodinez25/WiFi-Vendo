@@ -8,7 +8,7 @@ on:
       - ".github/workflows/build-firmware.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -47,11 +49,28 @@ jobs:
           cp "firmware/.pio/build/${{ matrix.environment }}/firmware.bin" "dist/${{ matrix.environment }}/"
           cp firmware/platformio.ini "dist/${{ matrix.environment }}/"
           printf 'Environment: %s\nCommit: %s\n' "${{ matrix.environment }}" "${GITHUB_SHA}" > "dist/${{ matrix.environment }}/BUILD-INFO.txt"
+          mkdir -p "firmware/releases/${{ matrix.environment }}"
+          cp "firmware/.pio/build/${{ matrix.environment }}/firmware.bin" "firmware/releases/${{ matrix.environment }}/firmware.bin"
+          cp "dist/${{ matrix.environment }}/BUILD-INFO.txt" "firmware/releases/${{ matrix.environment }}/BUILD-INFO.txt"
 
-      - name: Upload firmware binary
+      - name: Upload firmware binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.environment }}/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Commit binary into repository
+        if: matrix.environment == 'esp8266-wifi'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add firmware/releases/
+          if git diff --cached --quiet; then
+            echo "No firmware binary changes to commit."
+          else
+            git commit -m "build: publish ESP firmware binaries"
+            git push origin HEAD:main
+          fi
