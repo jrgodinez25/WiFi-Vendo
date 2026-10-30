@@ -66,9 +66,15 @@ sudo nft delete table inet wifi_vendo
 
 ## Admin interface restriction
 
-The admin dashboard and administrative APIs are restricted by exact source IP allowlist. By default, only loopback addresses can access them. Set `WIFI_VENDO_ADMIN_IPS` to a comma-separated list of trusted management IPs. The customer portal, health endpoint, voucher redemption, customer session endpoints and public promo-rate read remain available to guests.
+The admin dashboard and administrative APIs require both a valid administrator login and an exact source IP allowlist. By default, only loopback addresses can access them. Set `WIFI_VENDO_ADMIN_IPS` to a comma-separated list of trusted management IPs. The customer portal, health endpoint, voucher redemption, customer session endpoints and public promo-rate read remain available to guests.
 
-This is a network allowlist, **not a replacement for administrator login**. Admin authentication and role management are still outstanding. Do not expose the service to the public internet, and do not add the guest subnet to the admin allowlist.
+Set `WIFI_VENDO_ADMIN_PASSWORD` to a unique password of at least 12 characters before starting the service. Use a long random password and inject it through the service manager's protected environment/secret mechanism; do not commit it to Git, place it in the JSON data file, or pass it in a shell command that may be saved in history. Example (interactive shell only):
+
+```sh
+read -s -p 'WiFi Vendo admin password: ' WIFI_VENDO_ADMIN_PASSWORD; export WIFI_VENDO_ADMIN_PASSWORD; echo
+```
+
+The server derives a scrypt verifier at startup. Login is rate-limited to five failures per source IP per 15 minutes. Successful sessions last eight hours, are bound to the management IP, and are invalidated when the service restarts. Only one shared administrator password is supported; multi-user roles and account recovery are not yet implemented. Do not expose the service to the public internet, and do not add the guest subnet to the admin allowlist.
 
 The app does not trust `X-Forwarded-For`. Do not put it behind a reverse proxy or NAT that hides the original guest source address when using nftables enforcement; the firewall needs the real client IP. The portal cookie is marked `Secure` only when Node.js itself receives TLS. For public/open WiFi, use a trusted TLS deployment before collecting voucher codes, or protect the guest radio with WPA2/WPA3 and treat voucher codes as bearer credentials.
 
