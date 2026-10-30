@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "firmware/**"
+      - "!firmware/releases/**"
       - ".github/workflows/build-firmware.yml"
 
 permissions:
@@ -12,19 +13,8 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.environment }}
+    name: Build all firmware targets
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - environment: esp32-wifi
-            artifact: wifi-vendo-esp32-wifi
-          - environment: esp32-w5500
-            artifact: wifi-vendo-esp32-w5500
-          - environment: esp8266-wifi
-            artifact: wifi-vendo-esp8266-wifi
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -39,30 +29,39 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install --upgrade platformio
 
-      - name: Compile firmware
-        run: pio run --project-dir firmware --environment "${{ matrix.environment }}"
-
-      - name: Stage binary and build metadata
+      - name: Compile and stage all targets
         shell: bash
         run: |
-          mkdir -p "dist/${{ matrix.environment }}"
-          cp "firmware/.pio/build/${{ matrix.environment }}/firmware.bin" "dist/${{ matrix.environment }}/"
-          cp firmware/platformio.ini "dist/${{ matrix.environment }}/"
-          printf 'Environment: %s\nCommit: %s\n' "${{ matrix.environment }}" "${GITHUB_SHA}" > "dist/${{ matrix.environment }}/BUILD-INFO.txt"
-          mkdir -p "firmware/releases/${{ matrix.environment }}"
-          cp "firmware/.pio/build/${{ matrix.environment }}/firmware.bin" "firmware/releases/${{ matrix.environment }}/firmware.bin"
-          cp "dist/${{ matrix.environment }}/BUILD-INFO.txt" "firmware/releases/${{ matrix.environment }}/BUILD-INFO.txt"
+          set -euo pipefail
 
-      - name: Upload firmware binary artifact
+          build_target() {
+            local environment="$1"
+            local filename="$2"
+            local output_dir="firmware/releases/$environment"
+
+            pio run --project-dir firmware --environment "$environment"
+
+            mkdir -p "dist/$environment" "$output_dir"
+            cp "firmware/.pio/build/$environment/firmware.bin" "dist/$environment/$filename"
+            cp "firmware/.pio/build/$environment/firmware.bin" "$output_dir/$filename"
+            cp firmware/platformio.ini "dist/$environment/"
+            printf 'Environment: %s\nFilename: %s\nSource commit: %s\n' "$environment" "$filename" "$GITHUB_SHA" > "dist/$environment/BUILD-INFO.txt"
+            cp "dist/$environment/BUILD-INFO.txt" "$output_dir/BUILD-INFO.txt"
+          }
+
+          build_target "esp32-wifi" "esp32_fw.bin"
+          build_target "esp32-w5500" "esp32_w5500_fw.bin"
+          build_target "esp8266-wifi" "esp8266_fw.bin"
+
+      - name: Upload all firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.environment }}/
+          name: wifi-vendo-firmware-all-targets
+          path: dist/
           if-no-files-found: error
           retention-days: 30
 
-      - name: Commit binary into repository
-        if: matrix.environment == 'esp8266-wifi'
+      - name: Commit binaries into repository
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -71,6 +70,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No firmware binary changes to commit."
           else
-            git commit -m "build: publish ESP firmware binaries"
+            git commit -m "build: publish named ESP firmware binaries [skip ci]"
             git push origin HEAD:main
           fi
