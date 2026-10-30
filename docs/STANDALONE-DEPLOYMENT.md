@@ -3,7 +3,7 @@
 ## What is implemented
 
 The standalone customer flow now has:
-- A mobile-first captive portal at `/customer.html`, including voucher entry and optional QR scanning.
+- A mobile-first captive portal at `/hotspot/customer.html`, including voucher entry and optional QR scanning.
 - Voucher redemption that creates a random 256-bit session token. Only its SHA-256 hash is stored in the application data.
 - An `HttpOnly`, `SameSite=Strict` cookie; `Secure` is added when the Node.js connection itself uses TLS.
 - Session status, pause, resume, extension and logout APIs that require the cookie. Session IDs are no longer accepted as customer credentials.
@@ -44,7 +44,7 @@ Example environment for a dedicated guest bridge at `br-vendo`, gateway address 
 export PORT=3000
 export WIFI_VENDO_ENFORCEMENT=nftables
 export WIFI_VENDO_LAN_IFACE=br-vendo
-export WIFI_VENDO_PORTAL_URL=http://192.168.50.1:3000/customer.html
+export WIFI_VENDO_PORTAL_URL=http://192.168.50.1:3000/hotspot/customer.html
 export WIFI_VENDO_ADMIN_IPS=127.0.0.1,::1,192.168.50.10
 npm start
 ```
@@ -54,7 +54,7 @@ The app creates its own nftables table, `inet wifi_vendo`, with:
 - A forwarding chain that drops packets entering from the guest interface unless the source address is authorized.
 - A prerouting NAT chain that redirects unauthenticated guest HTTP traffic on TCP/80 to the portal on TCP/3000.
 
-The adapter redirects unauthenticated guest HTTP requests to the configured portal URL (or the customer page) and redirects TCP/80 to the local portal listener. The adapter does **not** configure the bridge, DHCP, DNS, WAN NAT, WiFi access point, or the gateway's input firewall. It does not intercept HTTPS or decrypt TLS. HTTPS destinations fail until the client is authorized; captive-network detection normally uses HTTP. Once the voucher is accepted, the client's address is added to the allow-set for the session's remaining duration. Pause and logout remove it; resume adds it again; extension refreshes the timeout.
+The adapter redirects unauthenticated guest HTTP requests to the configured portal URL (or `/hotspot/customer.html`) and redirects TCP/80 to the local portal listener. The adapter does **not** configure the bridge, DHCP, DNS, WAN NAT, WiFi access point, or the gateway's input firewall. It does not intercept HTTPS or decrypt TLS. HTTPS destinations fail until the client is authorized; captive-network detection normally uses HTTP. Once the voucher is accepted, the client's address is added to the allow-set for the session's remaining duration. Pause and logout remove it; resume adds it again; extension refreshes the timeout.
 
 The nftables table is dedicated to WiFi Vendo. Do not manually add unrelated rules to it. To disable enforcement, stop the service and remove only this dedicated table after verifying no clients depend on it:
 
