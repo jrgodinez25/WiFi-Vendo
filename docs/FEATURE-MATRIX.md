@@ -34,8 +34,8 @@
 - [ ] Multi-vendo selector and remembered selection
 - [ ] Remaining time, expiry, data quota and optional audio feedback
 
-## Admin\n\nAdmin source-IP allowlisting is implemented; administrator login, password hashing and role-based access are not yet implemented.
-- [ ] First-run setup and secure login/logout
+## Admin\n\nAdministrator password login, hashed sessions, logout, client-IP binding, management-IP allowlisting and login throttling are implemented. Multi-user roles remain outstanding.
+- [x] Secure administrator login/logout
 - [ ] Dashboard: sales, customers, uptime, device/router/internet status
 - [ ] System settings: SSID, network addressing, router, coin timeout, abuse, pins, LED polarity, voucher prefix/login/profile/validity
 - [ ] Promo-rate CRUD: name, price, minutes, validity, quota, profile, category
