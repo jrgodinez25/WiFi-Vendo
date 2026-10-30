@@ -5,4 +5,15 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  const dashboard=await fetch(base+'/api/dashboard').then(r=>r.json());assert.equal(typeof dashboard.lifetimeSales,'number');assert.equal(typeof dashboard.activeSessions,'number');
  const settings=await fetch(base+'/api/settings').then(r=>r.json());assert.equal(settings.lcdEnabled,false);assert.equal('routerPassword'in settings,false);
  const rates=await fetch(base+'/api/rates').then(r=>r.json());assert.ok(Array.isArray(rates));assert.ok(rates.length>0);
+ const clientId='coin-test-'+Date.now(),rateId=rates[0].id;
+ const started=await fetch(base+'/api/topup/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clientId,rateId})});
+ assert.equal(started.status,201);
+ const coin=await started.json();
+ const pulse=await fetch(base+'/api/topup/pulse',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:coin.sessionId,pulses:1,valuePerPulse:999})});
+ const pulseResult=await pulse.json();
+ assert.equal(pulse.status,200);
+ assert.equal(pulseResult.received,1,'client-supplied coin denomination must be ignored');
+ const cancelled=await fetch(base+'/api/topup/cancel',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:coin.sessionId})});
+ assert.equal(cancelled.status,200);
+
 });
