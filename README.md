@@ -19,9 +19,9 @@ npm start
 
 Open the admin dashboard at http://localhost:3000 and customer portal at http://localhost:3000/customer.html. Run tests with `npm test`.
 
-The simulator includes dashboard metrics, promo-rate management, voucher batch generation, simulated coin transactions, voucher redemption, standalone customer session controls (pause/resume/logout/extend), settings, device inventory and activity history. Coin simulation now uses a server-configured pulse denomination (client-supplied values are ignored), bounded pulse batches, a capped session timeout, and temporary client lockouts after repeated abandoned/expired transactions.
+The development app includes dashboard metrics, promo-rate management, voucher batch generation, simulated coin transactions, a responsive customer captive portal, cookie-authenticated standalone sessions (pause/resume/logout/extend), settings, device inventory and activity history. An optional Linux nftables adapter can redirect unauthenticated HTTP traffic and enforce IPv4/IPv6 session access on a dedicated guest interface. Coin simulation now uses a server-configured pulse denomination (client-supplied values are ignored), bounded pulse batches, a capped session timeout, and temporary client lockouts after repeated abandoned/expired transactions.
 
-**Important:** This is an early development simulator. It does not yet control a physical coin acceptor, provide live internet enforcement, connect to RouterOS, or perform OTA updates. Do not expose it to the public internet or connect payment hardware. See [Security](docs/SECURITY.md) and [Feature acceptance matrix](docs/FEATURE-MATRIX.md).
+**Important:** The default mode is simulated and does not enforce real internet access. The optional nftables adapter is not yet validated on a physical gateway; it requires an isolated Linux guest interface and manual DHCP/DNS/WAN/input-firewall setup. Admin authentication, physical coin hardware, RouterOS integration and OTA updates are still incomplete. Do not expose the app to the public internet or connect payment hardware. Follow [Standalone deployment](docs/STANDALONE-DEPLOYMENT.md), [Security](docs/SECURITY.md) and [Feature acceptance matrix](docs/FEATURE-MATRIX.md).
 
 ## Firmware targets
 
@@ -38,7 +38,7 @@ The firmware is currently a safe bring-up stub with hardware outputs disabled.
 - [Feature acceptance matrix](docs/FEATURE-MATRIX.md)
 - [Development guide](docs/DEVELOPMENT.md)
 - [RouterOS integration plan](docs/ROUTEROS-SETUP.md)
-- [Security requirements](docs/SECURITY.md)
+- [Standalone captive portal deployment](docs/STANDALONE-DEPLOYMENT.md)\n- [Security requirements](docs/SECURITY.md)
 - [Test plan](docs/TEST-PLAN.md)
 
 JuanFi is used as a functional reference for requirements. WiFi Vendo is implemented independently; original project assets and source are not copied.
