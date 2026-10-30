@@ -24,5 +24,33 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  }
  const locked=await fetch(base+'/api/topup/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clientId,rateId})});
  assert.equal(locked.status,429,'repeated abandoned coin sessions must trigger temporary lockout');
+ const generated=await fetch(base+'/api/vouchers/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rateId,quantity:1})});
+ assert.equal(generated.status,201);
+ const voucher=(await generated.json()).vouchers[0];
+ const noSession=await fetch(base+'/api/customer/session');
+ assert.equal(noSession.status,401,'session status must not be accessible without a session token');
+ const redeemed=await fetch(base+'/api/vouchers/redeem',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:voucher.code})});
+ assert.equal(redeemed.status,200);
+ const cookie=redeemed.headers.get('set-cookie');
+ assert.match(cookie,/HttpOnly/);assert.match(cookie,/SameSite=Strict/);
+ assert.doesNotMatch(JSON.stringify(await redeemed.json()),/sessionId/,'session identifiers must not be returned as bearer credentials');
+ const customerHeaders={cookie:cookie.split(';')[0]};
+ const session=await fetch(base+'/api/customer/session',{headers:customerHeaders});
+ assert.equal(session.status,200);
+ assert.equal((await session.json()).status,'active');
+ const paused=await fetch(base+'/api/customer/session/action',{method:'POST',headers:{...customerHeaders,'content-type':'application/json'},body:JSON.stringify({action:'pause'})});
+ assert.equal(paused.status,200);assert.equal((await paused.json()).status,'paused');
+ const resumed=await fetch(base+'/api/customer/session/action',{method:'POST',headers:{...customerHeaders,'content-type':'application/json'},body:JSON.stringify({action:'resume'})});
+ assert.equal(resumed.status,200);assert.equal((await resumed.json()).status,'active');
+ const ended=await fetch(base+'/api/customer/session/action',{method:'POST',headers:{...customerHeaders,'content-type':'application/json'},body:JSON.stringify({action:'logout'})});
+ assert.equal(ended.status,200);assert.match(ended.headers.get('set-cookie'),/Max-Age=0/);
+ const afterLogout=await fetch(base+'/api/customer/session',{headers:customerHeaders});
+ assert.equal(afterLogout.status,401,'logged-out token must no longer authorize a session');
+ const portal=await fetch(base+'/hotspot-detect.html',{redirect:'manual'});
+ assert.equal(portal.status,302);assert.equal(portal.headers.get('location'),'/customer.html');
+ const security=await fetch(base+'/customer.html');
+ assert.equal(security.headers.get('x-frame-options'),'DENY');
+ assert.match(security.headers.get('content-security-policy'),/frame-ancestors 'none'/);
+
 
 });
