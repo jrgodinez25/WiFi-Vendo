@@ -1,0 +1,3 @@
+Environment: esp32-w5500
+Filename: esp32_w5500_fw.bin
+Source commit: 5a96498462e82fe59f6250c296be8ad3d89fa01b

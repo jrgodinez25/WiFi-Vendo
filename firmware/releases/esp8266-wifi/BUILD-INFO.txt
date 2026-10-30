@@ -1,2 +1,3 @@
 Environment: esp8266-wifi
-Commit: 6f84ceb2081d27bf450364e116f70a4d6eebe984
+Filename: esp8266_fw.bin
+Source commit: 5a96498462e82fe59f6250c296be8ad3d89fa01b
