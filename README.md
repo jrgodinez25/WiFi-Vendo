@@ -19,7 +19,7 @@ npm start
 
 Open the admin dashboard at http://localhost:3000 and customer portal at http://localhost:3000/customer.html. Run tests with `npm test`.
 
-The simulator includes dashboard metrics, promo-rate management, voucher batch generation, simulated coin transactions, voucher redemption, standalone customer session controls (pause/resume/logout/extend), settings, device inventory and activity history.
+The simulator includes dashboard metrics, promo-rate management, voucher batch generation, simulated coin transactions, voucher redemption, standalone customer session controls (pause/resume/logout/extend), settings, device inventory and activity history. Coin simulation now uses a server-configured pulse denomination (client-supplied values are ignored), bounded pulse batches, a capped session timeout, and temporary client lockouts after repeated abandoned/expired transactions.
 
 **Important:** This is an early development simulator. It does not yet control a physical coin acceptor, provide live internet enforcement, connect to RouterOS, or perform OTA updates. Do not expose it to the public internet or connect payment hardware. See [Security](docs/SECURITY.md) and [Feature acceptance matrix](docs/FEATURE-MATRIX.md).
 
