@@ -101,5 +101,10 @@ async function handler(req,res){
  if(req.method==='GET'&&['/generate_204','/gen_204','/hotspot-detect.html','/connecttest.txt','/ncsi.txt','/redirect'].includes(p)){res.writeHead(302,{location:process.env.WIFI_VENDO_PORTAL_URL||'/hotspot/customer.html','cache-control':'no-store'});return res.end()}const file=p==='/'?'/index.html':decodeURIComponent(p),isHotspot=file.startsWith('/hotspot/'),root=isHotspot?HOTSPOT:PUB,target=path.resolve(root,isHotspot?'.'+file.slice('/hotspot'.length):'.'+file);if(!target.startsWith(root+path.sep))return send(res,403,{error:'Forbidden'});fs.readFile(target,(e,b)=>{if(e)return send(res,404,{error:'Not found'});const ext=path.extname(target);res.writeHead(200,{'content-type':({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8'}[ext]||'application/octet-stream'),'cache-control':ext==='.html'?'no-cache':'public, max-age=300','x-content-type-options':'nosniff','x-frame-options':'DENY','referrer-policy':'no-referrer','permissions-policy':'camera=(self), microphone=(), geolocation=()','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"});res.end(b)})
 }
 const server=http.createServer((req,res)=>handler(req,res).catch(e=>send(res,500,{error:e.message})));
-if(require.main===module)server.listen(PORT,()=>console.log('WiFi Vendo listening on http://localhost:'+PORT));
+if(require.main===module){
+ (async()=>{
+  if(state.settings.mode==='standalone'&&enforcement.mode==='nftables')await enforcement.setup();
+  server.listen(PORT,()=>console.log('WiFi Vendo listening on http://localhost:'+PORT));
+ })().catch(error=>{console.error('WiFi Vendo startup blocked: firewall initialization failed:',error.message);process.exitCode=1});
+}
 module.exports={server,state};
