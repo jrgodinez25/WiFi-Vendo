@@ -32,7 +32,7 @@ Before enabling enforcement, verify all of the following:
 1. The gateway has a separate WAN interface with working IP forwarding and outbound NAT/masquerading.
 2. Guest DHCP supplies the gateway as the default route and preferably the gateway's DNS proxy as the DNS server. Permit guest DNS requests to that local resolver; it should forward normal queries upstream. Do not configure a wildcard DNS response to the portal; authorized customers need normal DNS.
 3. The gateway input firewall permits guest clients to reach TCP/3000 on the gateway.
-4. The configured guest interface is the actual ingress interface seen by the Linux routing stack. Verify it with `ip route` and `tcpdump`; bridge member names and bridge names are not interchangeable.
+4. The configured guest interface is the actual ingress interface seen by the Linux routing stack. Verify it with `ip route` and `tcpdump`; bridge member names and bridge names are not interchangeable. Use stable DHCP leases and client isolation/anti-spoofing on the AP: sessions are bound to the client source IP, so an IP change requires a new voucher session.
 5. The admin workstation has a fixed management IP and is not connected through the guest interface.
 6. The portal URL resolves/reaches the gateway from the guest network.
 
