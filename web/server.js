@@ -2,6 +2,7 @@
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const enforcement=require('./enforcement');
 const PORT=Number(process.env.PORT||3000),PUB=path.join(__dirname,'public'),DB=path.join(__dirname,'data.json');
+const redeemAttempts=new Map();
 const state={coinFailures:{},settings:{vendoName:'WiFi Vendo',mode:'standalone',networkMode:'both',ssid:'WiFi-Vendo',routerHost:'',routerPort:8728,routerUser:'',routerPassword:'',coinTimeoutSeconds:60,coinValuePerPulse:1,abuseLimit:5,banMinutes:10,voucherPrefix:'WV',voucherLogin:'username',voucherProfile:'default',validityPolicy:'stack',showPause:true,showExtend:true,memberLogin:false,chargingEnabled:false,dataRatesEnabled:false,internetCheck:true,disableVoucherInput:false,lcdEnabled:false},rates:[{id:'r5',name:'10 Minutes',price:5,minutes:10,validityMinutes:1440,dataMb:0,profile:'default',category:'internet',enabled:true},{id:'r10',name:'30 Minutes',price:10,minutes:30,validityMinutes:1440,dataMb:0,profile:'default',category:'internet',enabled:true}],devices:[{id:'main',name:'Main Vendo',board:'simulator',network:'wifi',online:true,chargingEnabled:false}],vouchers:[],sessions:[],stats:{lifetimeSales:0,currentSales:0,customersServed:0},audit:[]};
 try{Object.assign(state,JSON.parse(fs.readFileSync(DB,'utf8')))}catch{}
 function save(){const t=DB+'.tmp';fs.writeFileSync(t,JSON.stringify(state,null,2));fs.renameSync(t,DB)}
@@ -24,6 +25,8 @@ function sameOriginIfProvided(req){const o=req.headers.origin;if(!o)return true;
 function enforceAuthorize(req,seconds){return state.settings.mode==='standalone'?enforcement.authorize(clientAddress(req),seconds):Promise.resolve()}
 function enforceDeauthorize(req){return state.settings.mode==='standalone'?enforcement.deauthorize(clientAddress(req)):Promise.resolve()}
 function jsonRequest(req){return /^application\/json(?:;|$)/i.test(String(req.headers['content-type']||''))}
+function redeemAttemptBlocked(req){const key=clientAddress(req),now=Date.now(),entry=redeemAttempts.get(key);if(!entry||now-entry.startedAt>600000){redeemAttempts.set(key,{startedAt:now,count:0});return false}return entry.count>=10}
+function recordRedeemFailure(req){const key=clientAddress(req),now=Date.now(),entry=redeemAttempts.get(key);if(!entry||now-entry.startedAt>600000)redeemAttempts.set(key,{startedAt:now,count:1});else entry.count++}
 function adminAllowed(req){const allowed=String(process.env.WIFI_VENDO_ADMIN_IPS||'127.0.0.1,::1').split(',').map(x=>x.trim()).filter(Boolean);return allowed.includes(clientAddress(req))}
 function requiresAdmin(req,p){if(p==='/'||p==='/index.html'||p==='/app.js')return true;if(!p.startsWith('/api/'))return false;if(['/api/health','/api/vouchers/redeem','/api/customer/session','/api/customer/session/action','/api/customer/session/extend'].includes(p))return false;return p!=='/api/rates'||req.method!=='GET'}
 
@@ -46,15 +49,16 @@ async function handler(req,res){
  if(p==='/api/topup/cancel'&&req.method==='POST'){const d=await read(req),s=state.sessions.find(x=>x.id===d.sessionId);if(!s)return send(res,404,{error:'Session not found'});if(['paid','completed'].includes(s.status))return send(res,409,{error:'Paid session cannot be cancelled'});if(s.status!=='cancelled'){s.status='cancelled';coinFailure(s.clientId);log('coin.session.cancelled',{sessionId:s.id})}save();return send(res,200,{ok:true})}
  if(p==='/api/topup/complete'&&req.method==='POST'){const d=await read(req),s=state.sessions.find(x=>x.id===d.sessionId&&x.status==='paid');if(!s)return send(res,409,{error:'Session is not paid'});const rate=state.rates.find(x=>x.id===s.rateId),code=state.settings.voucherPrefix.toUpperCase()+crypto.randomBytes(3).toString('hex').toUpperCase(),v={id:newId('vch'),code,username:code,password:null,rateId:rate.id,rateName:rate.name,price:rate.price,minutes:rate.minutes,profile:rate.profile,status:'unused',createdAt:new Date().toISOString(),expiresAt:null};state.vouchers.push(v);s.status='completed';s.voucherId=v.id;state.stats.currentSales+=rate.price;state.stats.lifetimeSales+=rate.price;log('coin.voucher-issued',{voucherId:v.id});save();return send(res,201,{voucher:v})}
  if(p==='/api/vouchers/redeem'&&req.method==='POST'){
+  if(redeemAttemptBlocked(req))return send(res,429,{error:'Too many voucher attempts. Please wait ten minutes before trying again.'});
   if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});
   const d=await read(req),code=String(d.code||'').trim().toUpperCase();
-  if(!/^[A-Z0-9-]{4,32}$/.test(code))return send(res,400,{error:'Enter a valid voucher code'});
+  if(!/^[A-Z0-9-]{4,32}$/.test(code)){recordRedeemFailure(req);return send(res,400,{error:'Enter a valid voucher code'})}
   const v=state.vouchers.find(x=>x.code===code);
-  if(!v)return send(res,404,{error:'Voucher not found. Check the code and try again.'});
-  if(v.status!=='unused')return send(res,409,{error:'This voucher has already been redeemed or is unavailable.'});
+  if(!v){recordRedeemFailure(req);return send(res,404,{error:'Voucher not found. Check the code and try again.'})}
+  if(v.status!=='unused'){recordRedeemFailure(req);return send(res,409,{error:'This voucher has already been redeemed or is unavailable.'})}
   const token=crypto.randomBytes(32).toString('base64url'),now=Date.now();
   try{await enforceAuthorize(req,v.minutes*60)}catch(error){return send(res,503,{error:'Network access could not be enabled. Your voucher was not consumed. '+error.message})}
-  v.status='used';v.redeemedAt=new Date(now).toISOString();v.expiresAt=new Date(now+v.minutes*60000).toISOString();
+  redeemAttempts.delete(clientAddress(req));v.status='used';v.redeemedAt=new Date(now).toISOString();v.expiresAt=new Date(now+v.minutes*60000).toISOString();
   v.sessionId=newId('sess');v.sessionTokenHash=sessionTokenHash(token);v.clientAddress=clientAddress(req);
   v.sessionStatus='active';v.remainingSeconds=v.minutes*60;v.lastResumedAt=now;
   state.stats.customersServed++;log('voucher.redeemed',{voucherId:v.id});save();
