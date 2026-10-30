@@ -29,9 +29,11 @@ function redeemAttemptBlocked(req){const key=clientAddress(req),now=Date.now(),e
 function recordRedeemFailure(req){const key=clientAddress(req),now=Date.now(),entry=redeemAttempts.get(key);if(!entry||now-entry.startedAt>600000)redeemAttempts.set(key,{startedAt:now,count:1});else entry.count++}
 function adminAllowed(req){const allowed=String(process.env.WIFI_VENDO_ADMIN_IPS||'127.0.0.1,::1').split(',').map(x=>x.trim()).filter(Boolean);return allowed.includes(clientAddress(req))}
 function requiresAdmin(req,p){if(p==='/'||p==='/index.html'||p==='/app.js')return true;if(!p.startsWith('/api/'))return false;if(['/api/health','/api/vouchers/redeem','/api/customer/session','/api/customer/session/action','/api/customer/session/extend'].includes(p))return false;return p!=='/api/rates'||req.method!=='GET'}
+function portalRequest(req,p){const configured=process.env.WIFI_VENDO_PORTAL_URL;if(configured){try{return new URL(configured).host===String(req.headers.host||'')}catch{return false}}return ['/customer.html','/customer.js','/styles.css','/api/health','/api/rates','/api/vouchers/redeem','/api/customer/session','/api/customer/session/action','/api/customer/session/extend'].includes(p)}
 
 async function handler(req,res){
  const u=new URL(req.url,'http://localhost'),p=u.pathname;
+ if(enforcement.mode==='nftables'&&state.settings.mode==='standalone'&&req.method==='GET'&&!portalRequest(req,p)){res.writeHead(302,{location:process.env.WIFI_VENDO_PORTAL_URL||'/customer.html','cache-control':'no-store'});return res.end()}
  if(requiresAdmin(req,p)&&!adminAllowed(req))return send(res,403,{error:'Administrator interface is restricted to trusted management IP addresses.'});
  if(req.method==='OPTIONS'){res.writeHead(204,{'cache-control':'no-store','x-content-type-options':'nosniff'});return res.end()}
  if(p==='/api/health')return send(res,200,{status:'ok',app:'WiFi Vendo',version:'0.2.0',mode:state.settings.mode,routerOS:state.settings.mode==='mikrotik'?'adapter-pending':'not-required',coinAcceptor:'simulator-only',enforcement:enforcement.mode,lcd:false,targets:['esp8266-wifi','esp32-wifi','esp32-w5500']});
