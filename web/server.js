@@ -1,5 +1,6 @@
 'use strict';
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const enforcement=require('./enforcement');
 const PORT=Number(process.env.PORT||3000),PUB=path.join(__dirname,'public'),DB=path.join(__dirname,'data.json');
 const state={coinFailures:{},settings:{vendoName:'WiFi Vendo',mode:'standalone',networkMode:'both',ssid:'WiFi-Vendo',routerHost:'',routerPort:8728,routerUser:'',routerPassword:'',coinTimeoutSeconds:60,coinValuePerPulse:1,abuseLimit:5,banMinutes:10,voucherPrefix:'WV',voucherLogin:'username',voucherProfile:'default',validityPolicy:'stack',showPause:true,showExtend:true,memberLogin:false,chargingEnabled:false,dataRatesEnabled:false,internetCheck:true,disableVoucherInput:false,lcdEnabled:false},rates:[{id:'r5',name:'10 Minutes',price:5,minutes:10,validityMinutes:1440,dataMb:0,profile:'default',category:'internet',enabled:true},{id:'r10',name:'30 Minutes',price:10,minutes:30,validityMinutes:1440,dataMb:0,profile:'default',category:'internet',enabled:true}],devices:[{id:'main',name:'Main Vendo',board:'simulator',network:'wifi',online:true,chargingEnabled:false}],vouchers:[],sessions:[],stats:{lifetimeSales:0,currentSales:0,customersServed:0},audit:[]};
 try{Object.assign(state,JSON.parse(fs.readFileSync(DB,'utf8')))}catch{}
@@ -24,7 +25,7 @@ function sameOriginIfProvided(req){const o=req.headers.origin;if(!o)return true;
 async function handler(req,res){
  const u=new URL(req.url,'http://localhost'),p=u.pathname;
  if(req.method==='OPTIONS'){res.writeHead(204,{'cache-control':'no-store','x-content-type-options':'nosniff'});return res.end()}
- if(p==='/api/health')return send(res,200,{status:'ok',app:'WiFi Vendo',version:'0.2.0',mode:state.settings.mode,routerOS:state.settings.mode==='mikrotik'?'adapter-pending':'not-required',coinAcceptor:'simulator-only',lcd:false,targets:['esp8266-wifi','esp32-wifi','esp32-w5500']});
+ if(p==='/api/health')return send(res,200,{status:'ok',app:'WiFi Vendo',version:'0.2.0',mode:state.settings.mode,routerOS:state.settings.mode==='mikrotik'?'adapter-pending':'not-required',coinAcceptor:'simulator-only',enforcement:enforcement.mode,lcd:false,targets:['esp8266-wifi','esp32-wifi','esp32-w5500']});
  if(p==='/api/dashboard')return send(res,200,{...state.stats,activeSessions:state.sessions.filter(x=>x.status==='accepting').length,devicesOnline:state.devices.filter(x=>x.online).length,devicesTotal:state.devices.length,uptimeSeconds:Math.floor(process.uptime()),mode:state.settings.mode});
  if(p==='/api/settings'&&req.method==='GET')return send(res,200,safeSettings());
  if(p==='/api/settings'&&req.method==='PUT'){const d=await read(req);for(const k of ['vendoName','mode','networkMode','ssid','routerHost','routerPort','routerUser','coinTimeoutSeconds','coinValuePerPulse','abuseLimit','banMinutes','voucherPrefix','voucherLogin','voucherProfile','validityPolicy','showPause','showExtend','memberLogin','chargingEnabled','dataRatesEnabled','internetCheck','disableVoucherInput'])if(k in d)state.settings[k]=d[k];if(d.routerPassword)state.settings.routerPassword=d.routerPassword;log('settings.updated');save();return send(res,200,safeSettings())}
@@ -46,6 +47,7 @@ async function handler(req,res){
   if(!v)return send(res,404,{error:'Voucher not found. Check the code and try again.'});
   if(v.status!=='unused')return send(res,409,{error:'This voucher has already been redeemed or is unavailable.'});
   const token=crypto.randomBytes(32).toString('base64url'),now=Date.now();
+  try{await enforcement.authorize(clientAddress(req),v.minutes*60)}catch(error){return send(res,503,{error:'Network access could not be enabled. Your voucher was not consumed. '+error.message})}
   v.status='used';v.redeemedAt=new Date(now).toISOString();v.expiresAt=new Date(now+v.minutes*60000).toISOString();
   v.sessionId=newId('sess');v.sessionTokenHash=sessionTokenHash(token);v.clientAddress=clientAddress(req);
   v.sessionStatus='active';v.remainingSeconds=v.minutes*60;v.lastResumedAt=now;
@@ -55,16 +57,16 @@ async function handler(req,res){
  }
  if(p==='/api/customer/session'&&req.method==='GET'){
   const v=customerVoucher(req);if(!v)return send(res,401,{error:'No active customer session. Redeem your voucher to connect.'});
-  const remaining=remainingSeconds(v);if(remaining<=0){v.sessionStatus='expired';v.remainingSeconds=0;v.lastResumedAt=null;v.sessionTokenHash=null;log('customer.session.expired',{voucherId:v.id});save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Your internet session has expired.'})}
+  const remaining=remainingSeconds(v);if(remaining<=0){await enforcement.deauthorize(clientAddress(req));v.sessionStatus='expired';v.remainingSeconds=0;v.lastResumedAt=null;v.sessionTokenHash=null;log('customer.session.expired',{voucherId:v.id});save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Your internet session has expired.'})}
   return send(res,200,{code:v.code,status:v.sessionStatus,remainingSeconds:remaining,expiresAt:v.expiresAt,rateName:v.rateName,mode:state.settings.mode});
  }
  if(p==='/api/customer/session/action'&&req.method==='POST'){
   if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
   const v=customerVoucher(req);if(!v)return send(res,401,{error:'Customer session not authorized.'});
   const d=await read(req),remaining=remainingSeconds(v);if(remaining<=0){v.sessionStatus='expired';v.remainingSeconds=0;v.sessionTokenHash=null;save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Session expired'})}
-  if(d.action==='pause'){if(!state.settings.showPause)return send(res,403,{error:'Pause is disabled'});if(v.sessionStatus!=='active')return send(res,409,{error:'Session is not active'});v.remainingSeconds=remaining;v.sessionStatus='paused';v.lastResumedAt=null}
-  else if(d.action==='resume'){if(v.sessionStatus!=='paused')return send(res,409,{error:'Session is not paused'});v.sessionStatus='active';v.lastResumedAt=Date.now()}
-  else if(d.action==='logout'){v.remainingSeconds=remaining;v.sessionStatus='logged-out';v.lastResumedAt=null;v.sessionTokenHash=null;clearCustomerCookie(res,!!req.socket.encrypted)}
+  if(d.action==='pause'){if(!state.settings.showPause)return send(res,403,{error:'Pause is disabled'});if(v.sessionStatus!=='active')return send(res,409,{error:'Session is not active'});await enforcement.deauthorize(clientAddress(req));v.remainingSeconds=remaining;v.sessionStatus='paused';v.lastResumedAt=null}
+  else if(d.action==='resume'){if(v.sessionStatus!=='paused')return send(res,409,{error:'Session is not paused'});await enforcement.authorize(clientAddress(req),remaining);v.sessionStatus='active';v.lastResumedAt=Date.now()}
+  else if(d.action==='logout'){await enforcement.deauthorize(clientAddress(req));v.remainingSeconds=remaining;v.sessionStatus='logged-out';v.lastResumedAt=null;v.sessionTokenHash=null;clearCustomerCookie(res,!!req.socket.encrypted)}
   else return send(res,400,{error:'Unsupported session action'});
   log('customer.session.'+d.action,{voucherId:v.id});save();return send(res,200,{status:v.sessionStatus,remainingSeconds:v.remainingSeconds});
  }
@@ -75,7 +77,7 @@ async function handler(req,res){
   if(!state.settings.showExtend)return send(res,403,{error:'Extension is disabled'});
   if(!['active','paused'].includes(v.sessionStatus))return send(res,409,{error:'Session cannot be extended'});
   const remaining=remainingSeconds(v);if(remaining<=0){v.sessionStatus='expired';v.sessionTokenHash=null;save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Session expired'})}
-  v.remainingSeconds=remaining+rate.minutes*60;v.expiresAt=new Date(Date.now()+v.remainingSeconds*1000).toISOString();if(v.sessionStatus==='active')v.lastResumedAt=Date.now();
+  v.remainingSeconds=remaining+rate.minutes*60;v.expiresAt=new Date(Date.now()+v.remainingSeconds*1000).toISOString();if(v.sessionStatus==='active'){await enforcement.authorize(clientAddress(req),v.remainingSeconds);v.lastResumedAt=Date.now();}
   v.price+=rate.price;state.stats.currentSales+=rate.price;state.stats.lifetimeSales+=rate.price;log('customer.session.extended',{voucherId:v.id,rateId:rate.id});save();
   return send(res,200,{status:v.sessionStatus,remainingSeconds:v.remainingSeconds,expiresAt:v.expiresAt});
  }
