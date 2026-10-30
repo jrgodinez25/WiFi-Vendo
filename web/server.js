@@ -72,6 +72,7 @@ async function handler(req,res){
  }
  if(p==='/api/customer/session/action'&&req.method==='POST'){
   if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
+  if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});
   const v=customerVoucher(req);if(!v)return send(res,401,{error:'Customer session not authorized.'});
   const d=await read(req),remaining=remainingSeconds(v);if(remaining<=0){await enforceDeauthorize(req);v.sessionStatus='expired';v.remainingSeconds=0;v.sessionTokenHash=null;save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Session expired'})}
   if(d.action==='pause'){if(!state.settings.showPause)return send(res,403,{error:'Pause is disabled'});if(v.sessionStatus!=='active')return send(res,409,{error:'Session is not active'});await enforceDeauthorize(req);v.remainingSeconds=remaining;v.sessionStatus='paused';v.lastResumedAt=null}
@@ -82,6 +83,7 @@ async function handler(req,res){
  }
  if(p==='/api/customer/session/extend'&&req.method==='POST'){
   if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
+  if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});
   const v=customerVoucher(req),d=await read(req),rate=state.rates.find(x=>x.id===d.rateId&&x.enabled);
   if(!v)return send(res,401,{error:'Customer session not authorized.'});if(!rate)return send(res,404,{error:'Promo rate not found.'});
   if(!state.settings.showExtend)return send(res,403,{error:'Extension is disabled'});
