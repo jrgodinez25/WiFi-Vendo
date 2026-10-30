@@ -43,7 +43,7 @@ async function handler(req,res){
  if(p==='/api/topup/cancel'&&req.method==='POST'){const d=await read(req),s=state.sessions.find(x=>x.id===d.sessionId);if(!s)return send(res,404,{error:'Session not found'});if(['paid','completed'].includes(s.status))return send(res,409,{error:'Paid session cannot be cancelled'});if(s.status!=='cancelled'){s.status='cancelled';coinFailure(s.clientId);log('coin.session.cancelled',{sessionId:s.id})}save();return send(res,200,{ok:true})}
  if(p==='/api/topup/complete'&&req.method==='POST'){const d=await read(req),s=state.sessions.find(x=>x.id===d.sessionId&&x.status==='paid');if(!s)return send(res,409,{error:'Session is not paid'});const rate=state.rates.find(x=>x.id===s.rateId),code=state.settings.voucherPrefix.toUpperCase()+crypto.randomBytes(3).toString('hex').toUpperCase(),v={id:newId('vch'),code,username:code,password:null,rateId:rate.id,rateName:rate.name,price:rate.price,minutes:rate.minutes,profile:rate.profile,status:'unused',createdAt:new Date().toISOString(),expiresAt:null};state.vouchers.push(v);s.status='completed';s.voucherId=v.id;state.stats.currentSales+=rate.price;state.stats.lifetimeSales+=rate.price;log('coin.voucher-issued',{voucherId:v.id});save();return send(res,201,{voucher:v})}
  if(p==='/api/vouchers/redeem'&&req.method==='POST'){
-  if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});
+  if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});
   const d=await read(req),code=String(d.code||'').trim().toUpperCase();
   if(!/^[A-Z0-9-]{4,32}$/.test(code))return send(res,400,{error:'Enter a valid voucher code'});
   const v=state.vouchers.find(x=>x.code===code);
@@ -67,9 +67,9 @@ async function handler(req,res){
   if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
   const v=customerVoucher(req);if(!v)return send(res,401,{error:'Customer session not authorized.'});
   const d=await read(req),remaining=remainingSeconds(v);if(remaining<=0){await enforceDeauthorize(req);v.sessionStatus='expired';v.remainingSeconds=0;v.sessionTokenHash=null;save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Session expired'})}
-  if(d.action==='pause'){if(!state.settings.showPause)return send(res,403,{error:'Pause is disabled'});if(v.sessionStatus!=='active')return send(res,409,{error:'Session is not active'});await enforcement.deauthorize(clientAddress(req));v.remainingSeconds=remaining;v.sessionStatus='paused';v.lastResumedAt=null}
+  if(d.action==='pause'){if(!state.settings.showPause)return send(res,403,{error:'Pause is disabled'});if(v.sessionStatus!=='active')return send(res,409,{error:'Session is not active'});await enforceDeauthorize(req);v.remainingSeconds=remaining;v.sessionStatus='paused';v.lastResumedAt=null}
   else if(d.action==='resume'){if(v.sessionStatus!=='paused')return send(res,409,{error:'Session is not paused'});await enforceAuthorize(req,remaining);v.sessionStatus='active';v.lastResumedAt=Date.now()}
-  else if(d.action==='logout'){await enforcement.deauthorize(clientAddress(req));v.remainingSeconds=remaining;v.sessionStatus='logged-out';v.lastResumedAt=null;v.sessionTokenHash=null;clearCustomerCookie(res,!!req.socket.encrypted)}
+  else if(d.action==='logout'){await enforceDeauthorize(req);v.remainingSeconds=remaining;v.sessionStatus='logged-out';v.lastResumedAt=null;v.sessionTokenHash=null;clearCustomerCookie(res,!!req.socket.encrypted)}
   else return send(res,400,{error:'Unsupported session action'});
   log('customer.session.'+d.action,{voucherId:v.id});save();return send(res,200,{status:v.sessionStatus,remainingSeconds:v.remainingSeconds});
  }
