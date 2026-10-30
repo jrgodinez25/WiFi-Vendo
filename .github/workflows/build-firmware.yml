@@ -1,0 +1,57 @@
+name: Build firmware binaries
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/build-firmware.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - environment: esp32-wifi
+            artifact: wifi-vendo-esp32-wifi
+          - environment: esp32-w5500
+            artifact: wifi-vendo-esp32-w5500
+          - environment: esp8266-wifi
+            artifact: wifi-vendo-esp8266-wifi
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install PlatformIO
+        run: python -m pip install --upgrade platformio
+
+      - name: Compile firmware
+        run: pio run --project-dir firmware --environment "${{ matrix.environment }}"
+
+      - name: Stage binary and build metadata
+        shell: bash
+        run: |
+          mkdir -p "dist/${{ matrix.environment }}"
+          cp "firmware/.pio/build/${{ matrix.environment }}/firmware.bin" "dist/${{ matrix.environment }}/"
+          cp firmware/platformio.ini "dist/${{ matrix.environment }}/"
+          printf 'Environment: %s\nCommit: %s\n' "${{ matrix.environment }}" "${GITHUB_SHA}" > "dist/${{ matrix.environment }}/BUILD-INFO.txt"
+
+      - name: Upload firmware binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.environment }}/
+          if-no-files-found: error
+          retention-days: 30
