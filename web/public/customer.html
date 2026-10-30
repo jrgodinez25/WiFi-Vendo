@@ -1,1 +1,85 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WiFi Vendo · Customer</title><link rel="stylesheet" href="/styles.css"></head><body class="customer"><main><header><div><small>WELCOME TO</small><h1>WiFi Vendo</h1></div><span class="badge">Customer portal</span></header><section class="panel"><h2>Get connected</h2><p>Enter your voucher code to start or check your internet session.</p><label>Voucher code<input id="voucher" autocomplete="off" placeholder="Enter voucher code"></label><div class="actions"><button id="redeem">Connect</button><button id="scan" class="muted">Scan QR code</button></div><video id="camera" playsinline hidden style="width:100%;max-width:360px;border-radius:10px"></video><p id="camera-note" class="hint">QR scanning requires a browser with BarcodeDetector support and camera permission.</p></section><section id="connected" class="panel" hidden><h2>Session status</h2><div class="session-summary"><strong id="time-left">--:--</strong><span id="session-state">Not connected</span></div><p id="expiry"></p><div class="actions"><button id="pause">Pause</button><button id="resume" class="muted">Resume</button><button id="logout" class="muted">Logout</button></div><h3>Extend your time</h3><label>Choose promo rate<select id="extend-rate"></select></label><button id="extend">Add time</button></section><p class="hint">Standalone demo mode. Real internet access requires a configured network gateway/captive portal. MikroTik mode will authenticate through RouterOS once the adapter is implemented.</p><div id="notice"></div></main><script src="/customer.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#10233f">
+  <meta name="description" content="Connect securely to WiFi Vendo using your voucher.">
+  <title>Connect to WiFi · WiFi Vendo</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="customer">
+  <main class="portal-shell">
+    <header class="portal-header">
+      <a class="portal-brand" href="/customer.html" aria-label="WiFi Vendo home">
+        <span class="brand-mark" aria-hidden="true">W</span>
+        <span><strong>WiFi Vendo</strong><small>FAST. SIMPLE. CONNECTED.</small></span>
+      </a>
+      <span class="secure-label"><span aria-hidden="true">●</span> Customer connection</span>
+    </header>
+
+    <section class="portal-hero">
+      <div>
+        <p class="eyebrow">WELCOME</p>
+        <h1>Your connection<br>starts here.</h1>
+        <p>Enter your voucher to get online. Already connected? Your session details are saved securely on this device.</p>
+      </div>
+      <div class="signal-art" aria-hidden="true"><span></span><span></span><span></span><i></i></div>
+    </section>
+
+    <section id="login-card" class="portal-card">
+      <div class="card-heading">
+        <div><p class="eyebrow">GET ONLINE</p><h2>Connect with a voucher</h2></div>
+        <span class="step-number">01</span>
+      </div>
+      <p class="muted-copy">Your voucher code is printed on your WiFi Vendo receipt.</p>
+      <form id="redeem-form" autocomplete="on">
+        <label for="voucher">Voucher code</label>
+        <div class="voucher-entry">
+          <input id="voucher" name="voucher" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="32" placeholder="e.g. WV12AB34" required>
+          <button id="scan" class="scan-button" type="button" aria-label="Scan voucher QR code" title="Scan QR code">▦</button>
+        </div>
+        <video id="camera" playsinline hidden aria-label="QR code camera view"></video>
+        <p id="camera-note" class="camera-note" hidden>Point your camera at the voucher QR code. Camera access is used only for scanning.</p>
+        <button id="redeem" class="primary-button" type="submit">Connect to the internet <span aria-hidden="true">→</span></button>
+      </form>
+      <div class="privacy-note"><span aria-hidden="true">▣</span><span>Your session is protected by a private, device-bound login token. Never share your voucher code.</span></div>
+    </section>
+
+    <section id="session-card" class="portal-card session-card" hidden>
+      <div class="card-heading">
+        <div><p class="eyebrow">YOU'RE CONNECTED</p><h2>Your internet session</h2></div>
+        <span id="session-pill" class="status-pill">Active</span>
+      </div>
+      <div class="time-panel">
+        <span class="time-label">TIME REMAINING</span>
+        <strong id="time-left" aria-live="off">--:--</strong>
+        <span id="session-state">Checking session…</span>
+      </div>
+      <div class="session-details">
+        <div><span>Voucher</span><strong id="session-code">—</strong></div>
+        <div><span>Expires</span><strong id="expiry">—</strong></div>
+      </div>
+      <div class="session-actions">
+        <button id="pause" class="secondary-button" type="button">Pause time</button>
+        <button id="resume" class="primary-button" type="button">Resume session</button>
+        <button id="logout" class="text-button" type="button">End session</button>
+      </div>
+      <div class="extend-area">
+        <div><p class="eyebrow">NEED MORE TIME?</p><h3>Extend your connection</h3></div>
+        <label for="extend-rate">Choose a promo</label>
+        <select id="extend-rate"></select>
+        <button id="extend" class="primary-button" type="button">Add time</button>
+      </div>
+    </section>
+
+    <section class="help-row">
+      <div class="help-icon" aria-hidden="true">?</div>
+      <div><strong>Need help connecting?</strong><p>Check that your voucher is entered correctly. Each voucher can only be redeemed once. If you need help, contact the vendo operator.</p></div>
+    </section>
+    <footer class="portal-footer"><span>© <span id="year"></span> WiFi Vendo</span><span>Standalone portal · Secure session</span></footer>
+    <div id="notice" class="portal-notice" role="status" aria-live="polite"></div>
+  </main>
+  <script src="/customer.js" defer></script>
+</body>
+</html>
