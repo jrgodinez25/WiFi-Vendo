@@ -15,5 +15,14 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  assert.equal(pulseResult.received,1,'client-supplied coin denomination must be ignored');
  const cancelled=await fetch(base+'/api/topup/cancel',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:coin.sessionId})});
  assert.equal(cancelled.status,200);
+ for(let i=0;i<4;i++){
+  const next=await fetch(base+'/api/topup/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clientId,rateId})});
+  assert.equal(next.status,201);
+  const nextCoin=await next.json();
+  const stop=await fetch(base+'/api/topup/cancel',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:nextCoin.sessionId})});
+  assert.equal(stop.status,200);
+ }
+ const locked=await fetch(base+'/api/topup/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clientId,rateId})});
+ assert.equal(locked.status,429,'repeated abandoned coin sessions must trigger temporary lockout');
 
 });
