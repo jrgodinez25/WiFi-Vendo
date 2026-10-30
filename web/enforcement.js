@@ -30,6 +30,10 @@ async function setup(){
     const chain=await execFileAsync(process.env.NFT_BIN||'nft',['list','chain','inet','wifi_vendo','forward'],{timeout:5000});
     if(!chain.stdout.includes('ip saddr != @allowed_v4'))await runNft('add rule inet wifi_vendo forward iifname "'+iface+'" ip saddr != @allowed_v4 drop\\n');
     if(!chain.stdout.includes('ip6 saddr != @allowed_v6'))await runNft('add rule inet wifi_vendo forward iifname "'+iface+'" ip6 saddr != @allowed_v6 drop\\n');
+    if(!await exists(['list','chain','inet','wifi_vendo','portal_nat']))await runNft('add chain inet wifi_vendo portal_nat { type nat hook prerouting priority dstnat; policy accept; }\\n');
+    const nat=await execFileAsync(process.env.NFT_BIN||'nft',['list','chain','inet','wifi_vendo','portal_nat'],{timeout:5000});
+    if(!nat.stdout.includes('ip saddr != @allowed_v4'))await runNft('add rule inet wifi_vendo portal_nat iifname "'+iface+'" ip saddr != @allowed_v4 tcp dport 80 redirect to :3000\\n');
+    if(!nat.stdout.includes('ip6 saddr != @allowed_v6'))await runNft('add rule inet wifi_vendo portal_nat iifname "'+iface+'" ip6 saddr != @allowed_v6 tcp dport 80 redirect to :3000\\n');
     ready=true;return {mode,ready:true,interface:iface};
   })();
   try{return await setupInFlight}finally{setupInFlight=null}
