@@ -81,3 +81,5 @@
  .portal-footer{font-size:8px}
 }
 @media(prefers-reduced-motion:reduce){.portal-notice,.primary-button{transition:none}}
+
+.customer #notice.portal-notice{display:block}
