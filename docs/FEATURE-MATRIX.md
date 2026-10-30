@@ -17,16 +17,16 @@
 - [ ] Development-only pulse simulation
 - [ ] Lifetime/current sales and customers served; independent reset
 
-## Router and standalone
+## Router and standalone\n\nStandalone customer token/session APIs and an optional Linux nftables adapter are implemented in code. Physical gateway acceptance remains open until the isolated deployment checklist in [Standalone deployment](STANDALONE-DEPLOYMENT.md) passes.
 - [ ] MikroTik API/API-SSL, credential test, least-privilege account
 - [ ] Hotspot profiles and voucher user creation
 - [ ] Username-only and username/password login
-- [ ] Voucher redeem, extend, pause/resume, logout, session status
+- [x] Voucher redeem, extend, pause/resume, logout, server-checked session status
 - [ ] Validity stacking policies and data quota
 - [ ] Standalone local authentication and session enforcement
 
 ## Customer portal
-- [ ] Responsive captive login, voucher input and QR scan
+- [x] Responsive captive login, voucher input and browser QR scan
 - [ ] Optional member login and disabled voucher input
 - [ ] Internet and charging promo rates
 - [ ] Coin top-up modal, pulse feedback, cancel and auto-login
@@ -34,7 +34,7 @@
 - [ ] Multi-vendo selector and remembered selection
 - [ ] Remaining time, expiry, data quota and optional audio feedback
 
-## Admin
+## Admin\n\nAdmin source-IP allowlisting is implemented; administrator login, password hashing and role-based access are not yet implemented.
 - [ ] First-run setup and secure login/logout
 - [ ] Dashboard: sales, customers, uptime, device/router/internet status
 - [ ] System settings: SSID, network addressing, router, coin timeout, abuse, pins, LED polarity, voucher prefix/login/profile/validity
@@ -44,4 +44,4 @@
 - [ ] Backup/restore, audit log, diagnostics, About/version
 
 ## Quality
-- [ ] Unit/API tests, hardware-in-loop tests, MikroTik lab tests, installation and troubleshooting guides
+- [x] Automated Node.js API tests and GitHub Actions CI\n- [ ] Hardware-in-loop tests, physical nftables gateway validation, MikroTik lab tests
