@@ -83,3 +83,6 @@
 @media(prefers-reduced-motion:reduce){.portal-notice,.primary-button{transition:none}}
 
 .customer #notice.portal-notice{display:block}
+
+.customer #notice.portal-notice{display:block;position:fixed;left:50%;right:auto;bottom:22px;z-index:5;margin:0;transform:translate(-50%,15px)}
+.customer #notice.portal-notice.visible{transform:translate(-50%,0)}
