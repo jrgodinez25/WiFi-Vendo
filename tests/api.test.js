@@ -52,7 +52,10 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  const afterLogout=await fetch(base+'/api/customer/session',{headers:customerHeaders});
  assert.equal(afterLogout.status,401,'logged-out token must no longer authorize a session');
  const portal=await fetch(base+'/hotspot-detect.html',{redirect:'manual'});
- assert.equal(portal.status,302);assert.equal(portal.headers.get('location'),'/customer.html');
+ assert.equal(portal.status,302);assert.equal(portal.headers.get('location'),'/hotspot/customer.html');
+ const portalPage=await fetch(base+'/hotspot/customer.html');assert.equal(portalPage.status,200);assert.match(await portalPage.text(),/\/hotspot\/portal\.css/);
+ const portalScript=await fetch(base+'/hotspot/customer.js');assert.equal(portalScript.status,200);assert.match(portalScript.headers.get('content-type'),/javascript/);
+ const portalStyle=await fetch(base+'/hotspot/portal.css');assert.equal(portalStyle.status,200);assert.match(portalStyle.headers.get('content-type'),/css/);
  const security=await fetch(base+'/customer.html');
  assert.equal(security.headers.get('x-frame-options'),'DENY');
  assert.match(security.headers.get('content-security-policy'),/frame-ancestors 'none'/);
