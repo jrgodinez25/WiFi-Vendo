@@ -1,7 +1,17 @@
-const test=require('node:test');const assert=require('node:assert/strict');const {server}=require('../web/server');
+process.env.WIFI_VENDO_ADMIN_PASSWORD='test-only-password-for-wifi-vendo';
+const test=require('node:test');const assert=require('node:assert/strict');const nativeFetch=global.fetch;let adminCookie='';
+global.fetch=(url,options={})=>{const headers={...(options.headers||{})};if(adminCookie&&!Object.keys(headers).some(k=>k.toLowerCase()==='cookie'))headers.cookie=adminCookie;return nativeFetch(url,{...options,headers})};
+const {server}=require('../web/server');
 let base;
 test('API exposes health, dashboard, settings and rates',async t=>{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base='http://127.0.0.1:'+server.address().port;t.after(()=>new Promise(resolve=>server.close(resolve)));
  const health=await fetch(base+'/api/health').then(r=>r.json());assert.equal(health.app,'WiFi Vendo');assert.equal(health.lcd,false);assert.equal(health.enforcement,'simulated');assert.ok(health.targets.includes('esp8266-wifi'));assert.ok(health.targets.includes('esp32-w5500'));
+ const denied=await nativeFetch(base+'/api/dashboard');assert.equal(denied.status,401,'admin APIs require an authenticated session');
+ const loginPage=await nativeFetch(base+'/',{redirect:'manual'});assert.equal(loginPage.status,302);assert.equal(loginPage.headers.get('location'),'/admin-login.html');
+ const loginHtml=await nativeFetch(base+'/admin-login.html');assert.equal(loginHtml.status,200);assert.match(await loginHtml.text(),/Administrator sign in/);
+ const badLogin=await nativeFetch(base+'/api/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:'incorrect-password'})});assert.equal(badLogin.status,401);
+ const login=await nativeFetch(base+'/api/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:process.env.WIFI_VENDO_ADMIN_PASSWORD})});
+ assert.equal(login.status,200);const adminSetCookie=login.headers.get('set-cookie');assert.match(adminSetCookie,/HttpOnly/);assert.match(adminSetCookie,/SameSite=Strict/);adminCookie=adminSetCookie.split(';')[0];
+ const adminSession=await fetch(base+'/api/admin/session');assert.equal(adminSession.status,200);assert.equal((await adminSession.json()).authenticated,true);
  const dashboard=await fetch(base+'/api/dashboard').then(r=>r.json());assert.equal(typeof dashboard.lifetimeSales,'number');assert.equal(typeof dashboard.activeSessions,'number');
  const settings=await fetch(base+'/api/settings').then(r=>r.json());assert.equal(settings.lcdEnabled,false);assert.equal('routerPassword'in settings,false);
  const rates=await fetch(base+'/api/rates').then(r=>r.json());assert.ok(Array.isArray(rates));assert.ok(rates.length>0);
@@ -56,6 +66,9 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  const portalPage=await fetch(base+'/hotspot/customer.html');assert.equal(portalPage.status,200);assert.match(await portalPage.text(),/\/hotspot\/portal\.css/);
  const portalScript=await fetch(base+'/hotspot/customer.js');assert.equal(portalScript.status,200);assert.match(portalScript.headers.get('content-type'),/javascript/);
  const portalStyle=await fetch(base+'/hotspot/portal.css');assert.equal(portalStyle.status,200);assert.match(portalStyle.headers.get('content-type'),/css/);
+ const logout=await fetch(base+'/api/admin/logout',{method:'POST',headers:{'content-type':'application/json'}});
+ assert.equal(logout.status,200);assert.match(logout.headers.get('set-cookie'),/Max-Age=0/);
+ const revoked=await fetch(base+'/api/dashboard');assert.equal(revoked.status,401,'logout revokes the administrator session');
  const security=await fetch(base+'/customer.html');
  assert.equal(security.headers.get('x-frame-options'),'DENY');
  assert.match(security.headers.get('content-security-policy'),/frame-ancestors 'none'/);
