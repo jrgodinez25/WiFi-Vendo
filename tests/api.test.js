@@ -7,7 +7,7 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  const health=await fetch(base+'/api/health').then(r=>r.json());assert.equal(health.app,'WiFi Vendo');assert.equal(health.lcd,false);assert.equal(health.enforcement,'simulated');assert.ok(health.targets.includes('esp8266-wifi'));assert.ok(health.targets.includes('esp32-w5500'));
  const denied=await nativeFetch(base+'/api/dashboard');assert.equal(denied.status,401,'admin APIs require an authenticated session');
  const loginPage=await nativeFetch(base+'/',{redirect:'manual'});assert.equal(loginPage.status,302);assert.equal(loginPage.headers.get('location'),'/admin-login.html');
- const loginHtml=await nativeFetch(base+'/admin-login.html');assert.equal(loginHtml.status,200);assert.match(await loginHtml.text(),/Administrator sign in/);
+ const loginHtml=await nativeFetch(base+'/admin-login.html');assert.equal(loginHtml.status,200);const loginMarkup=await loginHtml.text();assert.match(loginMarkup,/Administrator sign in/);assert.match(loginMarkup,/addEventListener/);assert.match(loginHtml.headers.get('content-security-policy'),/unsafe-inline/);
  const badLogin=await nativeFetch(base+'/api/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:'incorrect-password'})});assert.equal(badLogin.status,401);
  const login=await nativeFetch(base+'/api/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:process.env.WIFI_VENDO_ADMIN_PASSWORD})});
  assert.equal(login.status,200);const adminSetCookie=login.headers.get('set-cookie');assert.match(adminSetCookie,/HttpOnly/);assert.match(adminSetCookie,/SameSite=Strict/);adminCookie=adminSetCookie.split(';')[0];
@@ -69,6 +69,10 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  const logout=await fetch(base+'/api/admin/logout',{method:'POST',headers:{'content-type':'application/json'}});
  assert.equal(logout.status,200);assert.match(logout.headers.get('set-cookie'),/Max-Age=0/);
  const revoked=await fetch(base+'/api/dashboard');assert.equal(revoked.status,401,'logout revokes the administrator session');
+ for(let i=0;i<5;i++){const attempt=await nativeFetch(base+'/api/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:'wrong-password-for-throttle'})});assert.equal(attempt.status,401)}
+ const throttled=await nativeFetch(base+'/api/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:'wrong-password-for-throttle'})});
+ assert.equal(throttled.status,429,'administrator login attempts are throttled after five failures');
+
  const security=await fetch(base+'/customer.html');
  assert.equal(security.headers.get('x-frame-options'),'DENY');
  assert.match(security.headers.get('content-security-policy'),/frame-ancestors 'none'/);
