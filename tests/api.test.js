@@ -1,7 +1,7 @@
 const test=require('node:test');const assert=require('node:assert/strict');const {server}=require('../web/server');
 let base;
 test('API exposes health, dashboard, settings and rates',async t=>{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base='http://127.0.0.1:'+server.address().port;t.after(()=>new Promise(resolve=>server.close(resolve)));
- const health=await fetch(base+'/api/health').then(r=>r.json());assert.equal(health.app,'WiFi Vendo');assert.equal(health.lcd,false);assert.ok(health.targets.includes('esp8266-wifi'));assert.ok(health.targets.includes('esp32-w5500'));
+ const health=await fetch(base+'/api/health').then(r=>r.json());assert.equal(health.app,'WiFi Vendo');assert.equal(health.lcd,false);assert.equal(health.enforcement,'simulated');assert.ok(health.targets.includes('esp8266-wifi'));assert.ok(health.targets.includes('esp32-w5500'));
  const dashboard=await fetch(base+'/api/dashboard').then(r=>r.json());assert.equal(typeof dashboard.lifetimeSales,'number');assert.equal(typeof dashboard.activeSessions,'number');
  const settings=await fetch(base+'/api/settings').then(r=>r.json());assert.equal(settings.lcdEnabled,false);assert.equal('routerPassword'in settings,false);
  const rates=await fetch(base+'/api/rates').then(r=>r.json());assert.ok(Array.isArray(rates));assert.ok(rates.length>0);
@@ -29,6 +29,8 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  const voucher=(await generated.json()).vouchers[0];
  const noSession=await fetch(base+'/api/customer/session');
  assert.equal(noSession.status,401,'session status must not be accessible without a session token');
+ const rejected=await fetch(base+'/api/vouchers/redeem',{method:'POST',headers:{'content-type':'application/json','origin':'http://attacker.invalid'},body:JSON.stringify({code:voucher.code})});
+ assert.equal(rejected.status,403,'cross-origin voucher redemption must be rejected');
  const redeemed=await fetch(base+'/api/vouchers/redeem',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:voucher.code})});
  assert.equal(redeemed.status,200);
  const cookie=redeemed.headers.get('set-cookie');
@@ -38,6 +40,9 @@ test('API exposes health, dashboard, settings and rates',async t=>{await new Pro
  const session=await fetch(base+'/api/customer/session',{headers:customerHeaders});
  assert.equal(session.status,200);
  assert.equal((await session.json()).status,'active');
+ const extended=await fetch(base+'/api/customer/session/extend',{method:'POST',headers:{...customerHeaders,'content-type':'application/json'},body:JSON.stringify({rateId})});
+ assert.equal(extended.status,200);assert.ok((await extended.json()).remainingSeconds>0);
+
  const paused=await fetch(base+'/api/customer/session/action',{method:'POST',headers:{...customerHeaders,'content-type':'application/json'},body:JSON.stringify({action:'pause'})});
  assert.equal(paused.status,200);assert.equal((await paused.json()).status,'paused');
  const resumed=await fetch(base+'/api/customer/session/action',{method:'POST',headers:{...customerHeaders,'content-type':'application/json'},body:JSON.stringify({action:'resume'})});
