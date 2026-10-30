@@ -30,7 +30,7 @@ Use a dedicated guest-facing Layer-3 interface or bridge (example: `br-vendo`) t
 Before enabling enforcement, verify all of the following:
 
 1. The gateway has a separate WAN interface with working IP forwarding and outbound NAT/masquerading.
-2. Guest DHCP supplies the gateway as the default route and supplies a working DNS resolver. Do not configure a wildcard DNS response to the portal; authorized customers need normal DNS.
+2. Guest DHCP supplies the gateway as the default route and preferably the gateway's DNS proxy as the DNS server. Permit guest DNS requests to that local resolver; it should forward normal queries upstream. Do not configure a wildcard DNS response to the portal; authorized customers need normal DNS.
 3. The gateway input firewall permits guest clients to reach TCP/3000 on the gateway.
 4. The configured guest interface is the actual ingress interface seen by the Linux routing stack. Verify it with `ip route` and `tcpdump`; bridge member names and bridge names are not interchangeable.
 5. The admin workstation has a fixed management IP and is not connected through the guest interface.
@@ -54,7 +54,7 @@ The app creates its own nftables table, `inet wifi_vendo`, with:
 - A forwarding chain that drops packets entering from the guest interface unless the source address is authorized.
 - A prerouting NAT chain that redirects unauthenticated guest HTTP traffic on TCP/80 to the portal on TCP/3000.
 
-The adapter does **not** configure the bridge, DHCP, DNS, WAN NAT, WiFi access point, or the gateway's input firewall. It does not intercept HTTPS or decrypt TLS. HTTPS destinations fail until the client is authorized; captive-network detection normally uses HTTP. Once the voucher is accepted, the client's address is added to the allow-set for the session's remaining duration. Pause and logout remove it; resume adds it again; extension refreshes the timeout.
+The adapter redirects unauthenticated guest HTTP requests to the configured portal URL (or the customer page) and redirects TCP/80 to the local portal listener. The adapter does **not** configure the bridge, DHCP, DNS, WAN NAT, WiFi access point, or the gateway's input firewall. It does not intercept HTTPS or decrypt TLS. HTTPS destinations fail until the client is authorized; captive-network detection normally uses HTTP. Once the voucher is accepted, the client's address is added to the allow-set for the session's remaining duration. Pause and logout remove it; resume adds it again; extension refreshes the timeout.
 
 The nftables table is dedicated to WiFi Vendo. Do not manually add unrelated rules to it. To disable enforcement, stop the service and remove only this dedicated table after verifying no clients depend on it:
 
