@@ -17,7 +17,9 @@
 - [ ] Development-only pulse simulation
 - [ ] Lifetime/current sales and customers served; independent reset
 
-## Router and standalone\n\nStandalone customer token/session APIs and an optional Linux nftables adapter are implemented in code. Physical gateway acceptance remains open until the isolated deployment checklist in [Standalone deployment](STANDALONE-DEPLOYMENT.md) passes.
+## Router and standalone
+
+Standalone customer token/session APIs and an optional Linux nftables adapter are implemented in code. Physical gateway acceptance remains open until the isolated deployment checklist in [Standalone deployment](STANDALONE-DEPLOYMENT.md) passes.
 - [ ] MikroTik API/API-SSL, credential test, least-privilege account
 - [ ] Hotspot profiles and voucher user creation
 - [ ] Username-only and username/password login
@@ -34,7 +36,9 @@
 - [ ] Multi-vendo selector and remembered selection
 - [ ] Remaining time, expiry, data quota and optional audio feedback
 
-## Admin\n\nAdministrator password login, hashed sessions, logout, client-IP binding, management-IP allowlisting and login throttling are implemented. Multi-user roles remain outstanding.
+## Admin
+
+Administrator password login, hashed sessions, logout, client-IP binding, management-IP allowlisting and login throttling are implemented. Multi-user roles remain outstanding.
 - [x] Secure administrator login/logout
 - [ ] Dashboard: sales, customers, uptime, device/router/internet status
 - [ ] System settings: SSID, network addressing, router, coin timeout, abuse, pins, LED polarity, voucher prefix/login/profile/validity
@@ -44,4 +48,5 @@
 - [ ] Backup/restore, audit log, diagnostics, About/version
 
 ## Quality
-- [x] Automated Node.js API tests and GitHub Actions CI\n- [ ] Hardware-in-loop tests, physical nftables gateway validation, MikroTik lab tests
+- [x] Automated Node.js API tests and GitHub Actions CI
+- [ ] Hardware-in-loop tests, physical nftables gateway validation, MikroTik lab tests
