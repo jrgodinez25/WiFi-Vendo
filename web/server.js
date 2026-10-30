@@ -3,6 +3,12 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
 const enforcement=require('./enforcement');
 const PORT=Number(process.env.PORT||3000),PUB=path.join(__dirname,'public'),HOTSPOT=path.join(__dirname,'..','hotspot'),DB=path.join(__dirname,'data.json');
 const redeemAttempts=new Map();
+const adminLoginAttempts=new Map(),adminSessions=new Map();
+const ADMIN_SESSION_MS=8*60*60*1000;
+const adminPassword=String(process.env.WIFI_VENDO_ADMIN_PASSWORD||'');
+const adminPasswordConfigured=adminPassword.length>=12;
+const adminPasswordSalt=crypto.randomBytes(16);
+const adminPasswordHash=adminPasswordConfigured?crypto.scryptSync(adminPassword,adminPasswordSalt,64):null;
 const state={coinFailures:{},settings:{vendoName:'WiFi Vendo',mode:'standalone',networkMode:'both',ssid:'WiFi-Vendo',routerHost:'',routerPort:8728,routerUser:'',routerPassword:'',coinTimeoutSeconds:60,coinValuePerPulse:1,abuseLimit:5,banMinutes:10,voucherPrefix:'WV',voucherLogin:'username',voucherProfile:'default',validityPolicy:'stack',showPause:true,showExtend:true,memberLogin:false,chargingEnabled:false,dataRatesEnabled:false,internetCheck:true,disableVoucherInput:false,lcdEnabled:false},rates:[{id:'r5',name:'10 Minutes',price:5,minutes:10,validityMinutes:1440,dataMb:0,profile:'default',category:'internet',enabled:true},{id:'r10',name:'30 Minutes',price:10,minutes:30,validityMinutes:1440,dataMb:0,profile:'default',category:'internet',enabled:true}],devices:[{id:'main',name:'Main Vendo',board:'simulator',network:'wifi',online:true,chargingEnabled:false}],vouchers:[],sessions:[],stats:{lifetimeSales:0,currentSales:0,customersServed:0},audit:[]};
 try{Object.assign(state,JSON.parse(fs.readFileSync(DB,'utf8')))}catch{}
 function save(){const t=DB+'.tmp';fs.writeFileSync(t,JSON.stringify(state,null,2));fs.renameSync(t,DB)}
