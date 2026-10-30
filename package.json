@@ -1,0 +1,8 @@
+{
+  "name": "wifi-vendo",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Coin-operated Wi-Fi vending platform with MikroTik and standalone modes",
+  "scripts": { "start": "node web/server.js", "dev": "node --watch web/server.js", "test": "node --test" },
+  "engines": { "node": ">=20" }
+}
