@@ -53,6 +53,27 @@ async function handler(req,res){
   if(!adminSession(req)){if(req.method==='GET'&&(p==='/'||p==='/index.html')){res.writeHead(302,{location:'/admin-login.html','cache-control':'no-store'});return res.end()}return send(res,401,{error:'Administrator login required.'})}
  }
  if(req.method==='OPTIONS'){res.writeHead(204,{'cache-control':'no-store','x-content-type-options':'nosniff'});return res.end()}
+ if(p==='/api/admin/login'&&req.method==='POST'){
+  if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
+  if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});
+  if(adminLoginBlocked(req))return send(res,429,{error:'Too many login attempts. Try again in 15 minutes.'});
+  if(!adminPasswordConfigured)return send(res,503,{error:'Administrator password is not configured. Set WIFI_VENDO_ADMIN_PASSWORD to at least 12 characters and restart.'});
+  const d=await read(req);
+  if(!verifyAdminPassword(d.password)){recordAdminLoginFailure(req);log('admin.login.failed',{address:clientAddress(req)});return send(res,401,{error:'Invalid administrator credentials.'})}
+  adminLoginAttempts.delete(clientAddress(req));
+  const token=crypto.randomBytes(32).toString('base64url'),hash=sessionTokenHash(token),expiresAt=Date.now()+ADMIN_SESSION_MS;
+  adminSessions.set(hash,{address:clientAddress(req),expiresAt});
+  log('admin.login.succeeded',{address:clientAddress(req)});
+  setAdminCookie(res,token,!!req.socket.encrypted);
+  return send(res,200,{ok:true,expiresAt:new Date(expiresAt).toISOString()});
+ }
+ if(p==='/api/admin/session'&&req.method==='GET'){const session=adminSession(req);return send(res,200,{authenticated:!!session,expiresAt:session?new Date(session.expiresAt).toISOString():null})}
+ if(p==='/api/admin/logout'&&req.method==='POST'){
+  if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
+  if(!jsonRequest(req))return send(res,415,{error:'JSON request required'});
+  const token=cookieValue(req,'wv_admin');if(token)adminSessions.delete(sessionTokenHash(token));
+  clearAdminCookie(res,!!req.socket.encrypted);log('admin.logout',{address:clientAddress(req)});return send(res,200,{ok:true});
+ }
  if(p==='/api/health')return send(res,200,{status:'ok',app:'WiFi Vendo',version:'0.3.0',mode:state.settings.mode,routerOS:state.settings.mode==='mikrotik'?'adapter-pending':'not-required',coinAcceptor:'simulator-only',enforcement:enforcement.mode,lcd:false,targets:['esp8266-wifi','esp32-wifi','esp32-w5500']});
  if(p==='/api/dashboard')return send(res,200,{...state.stats,activeSessions:state.sessions.filter(x=>x.status==='accepting').length,devicesOnline:state.devices.filter(x=>x.online).length,devicesTotal:state.devices.length,uptimeSeconds:Math.floor(process.uptime()),mode:state.settings.mode});
  if(p==='/api/settings'&&req.method==='GET')return send(res,200,safeSettings());
