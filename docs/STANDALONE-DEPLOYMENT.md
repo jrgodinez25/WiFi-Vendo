@@ -49,6 +49,8 @@ export WIFI_VENDO_ADMIN_IPS=127.0.0.1,::1,192.168.50.10
 npm start
 ```
 
+The service initializes the dedicated firewall table before opening its HTTP listener. If firewall initialization fails, startup stops without accepting guest traffic. Setup is idempotent and is also checked before lease changes.
+
 The app creates its own nftables table, `inet wifi_vendo`, with:
 - IPv4 and IPv6 allow-sets with per-session timeouts.
 - A forwarding chain that drops packets entering from the guest interface unless the source address is authorized.
