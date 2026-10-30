@@ -12,6 +12,15 @@ function safeSettings(){const x={...state.settings};delete x.routerPassword;x.ro
 function clientKey(value){return String(value||'guest').trim().slice(0,80)||'guest'}
 function coinFailure(clientId){const now=Date.now(),key=clientKey(clientId),entry=state.coinFailures[key]||{count:0,blockedUntil:0};entry.count++;const limit=Math.max(1,Math.min(20,Number(state.settings.abuseLimit)||5));if(entry.count>=limit){entry.blockedUntil=now+Math.max(1,Math.min(1440,Number(state.settings.banMinutes)||10))*60000;entry.count=0}state.coinFailures[key]=entry;return entry}
 function coinBlocked(clientId){const entry=state.coinFailures[clientKey(clientId)];return !!entry&&entry.blockedUntil>Date.now()}
+function cookieValue(req,name){for(const part of String(req.headers.cookie||'').split(';')){const i=part.indexOf('=');if(i>0&&part.slice(0,i).trim()===name)return decodeURIComponent(part.slice(i+1).trim())}return ''}
+function clientAddress(req){return String(req.socket.remoteAddress||'').replace(/^::ffff:/,'')}
+function sessionTokenHash(token){return crypto.createHash('sha256').update(token).digest('hex')}
+function customerVoucher(req){const token=cookieValue(req,'wv_session');if(!token)return null;const v=state.vouchers.find(x=>x.sessionTokenHash===sessionTokenHash(token));if(!v||!['active','paused'].includes(v.sessionStatus))return null;if(v.clientAddress&&v.clientAddress!==clientAddress(req))return null;return v}
+function remainingSeconds(v){let n=Math.max(0,Number(v.remainingSeconds)||0);if(v.sessionStatus==='active'&&v.lastResumedAt)n=Math.max(0,n-Math.floor((Date.now()-v.lastResumedAt)/1000));return n}
+function setCustomerCookie(res,token,seconds,secure){res.setHeader('set-cookie','wv_session='+encodeURIComponent(token)+'; Path=/; HttpOnly; SameSite=Strict; Max-Age='+Math.max(0,Math.floor(seconds))+(secure?'; Secure':''))}
+function clearCustomerCookie(res,secure){res.setHeader('set-cookie','wv_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'+(secure?'; Secure':''))}
+function sameOriginIfProvided(req){const o=req.headers.origin;if(!o)return true;try{return new URL(o).host===String(req.headers.host||'')}catch{return false}}
+
 async function handler(req,res){
  const u=new URL(req.url,'http://localhost'),p=u.pathname;
  if(req.method==='OPTIONS'){res.writeHead(204,{'access-control-allow-origin':'*','access-control-allow-methods':'GET,POST,PUT,DELETE,OPTIONS','access-control-allow-headers':'content-type'});return res.end()}
@@ -29,10 +38,47 @@ async function handler(req,res){
  if(p==='/api/topup/pulse'&&req.method==='POST'){const d=await read(req),s=state.sessions.find(x=>x.id===d.sessionId&&x.status==='accepting');if(!s)return send(res,404,{error:'Active coin session not found'});if(Date.now()>=s.deadline){s.status='expired';coinFailure(s.clientId);save();return send(res,410,{error:'Coin session expired'})}const n=Math.max(1,Math.min(20,Math.floor(Number(d.pulses)||1))),value=Math.max(0.01,Math.min(1000,Number(state.settings.coinValuePerPulse)||1));s.pulses+=n;s.received=Math.round((s.received+n*value)*100)/100;if(s.received>=s.price){s.status='paid';delete state.coinFailures[s.clientId]}save();return send(res,200,{sessionId:s.id,received:s.received,amountDue:s.price,remaining:Math.max(0,Math.round((s.price-s.received)*100)/100),status:s.status,simulator:true})}
  if(p==='/api/topup/cancel'&&req.method==='POST'){const d=await read(req),s=state.sessions.find(x=>x.id===d.sessionId);if(!s)return send(res,404,{error:'Session not found'});if(['paid','completed'].includes(s.status))return send(res,409,{error:'Paid session cannot be cancelled'});if(s.status!=='cancelled'){s.status='cancelled';coinFailure(s.clientId);log('coin.session.cancelled',{sessionId:s.id})}save();return send(res,200,{ok:true})}
  if(p==='/api/topup/complete'&&req.method==='POST'){const d=await read(req),s=state.sessions.find(x=>x.id===d.sessionId&&x.status==='paid');if(!s)return send(res,409,{error:'Session is not paid'});const rate=state.rates.find(x=>x.id===s.rateId),code=state.settings.voucherPrefix.toUpperCase()+crypto.randomBytes(3).toString('hex').toUpperCase(),v={id:newId('vch'),code,username:code,password:null,rateId:rate.id,rateName:rate.name,price:rate.price,minutes:rate.minutes,profile:rate.profile,status:'unused',createdAt:new Date().toISOString(),expiresAt:null};state.vouchers.push(v);s.status='completed';s.voucherId=v.id;state.stats.currentSales+=rate.price;state.stats.lifetimeSales+=rate.price;log('coin.voucher-issued',{voucherId:v.id});save();return send(res,201,{voucher:v})}
- if(p==='/api/vouchers/redeem'&&req.method==='POST'){const d=await read(req),v=state.vouchers.find(x=>x.code===String(d.code||'').toUpperCase());if(!v)return send(res,404,{error:'Voucher not found'});if(v.status==='used')return send(res,409,{error:'Voucher already used'});v.status='used';v.redeemedAt=new Date().toISOString();v.expiresAt=new Date(Date.now()+v.minutes*60000).toISOString();v.sessionId=newId('sess');v.sessionStatus='active';v.remainingSeconds=v.minutes*60;v.lastResumedAt=Date.now();state.stats.customersServed++;log('voucher.redeemed',{voucherId:v.id});save();return send(res,200,{ok:true,voucher:{code:v.code,minutes:v.minutes,expiresAt:v.expiresAt},session:{id:v.sessionId,status:v.sessionStatus,remainingSeconds:v.remainingSeconds},mode:state.settings.mode})}
- if(p==='/api/customer/session'&&req.method==='GET'){const code=String(u.searchParams.get('code')||'').toUpperCase(),v=state.vouchers.find(x=>x.code===code&&x.sessionId);if(!v)return send(res,404,{error:'Customer session not found'});let remaining=v.remainingSeconds||0;if(v.sessionStatus==='active'&&v.lastResumedAt)remaining=Math.max(0,remaining-Math.floor((Date.now()-v.lastResumedAt)/1000));if(remaining<=0&&v.sessionStatus==='active'){v.sessionStatus='expired';save()}return send(res,200,{id:v.sessionId,code:v.code,status:v.sessionStatus,remainingSeconds:remaining,expiresAt:v.expiresAt,rateName:v.rateName,mode:state.settings.mode})}
- if(p==='/api/customer/session/action'&&req.method==='POST'){const d=await read(req),v=state.vouchers.find(x=>x.sessionId===d.sessionId);if(!v)return send(res,404,{error:'Session not found'});let remaining=v.remainingSeconds||0;if(v.sessionStatus==='active'&&v.lastResumedAt)remaining=Math.max(0,remaining-Math.floor((Date.now()-v.lastResumedAt)/1000));if(remaining<=0){v.sessionStatus='expired';save();return send(res,410,{error:'Session expired'})}if(d.action==='pause'){if(!state.settings.showPause)return send(res,403,{error:'Pause is disabled'});v.remainingSeconds=remaining;v.sessionStatus='paused';v.lastResumedAt=null}else if(d.action==='resume'){if(v.sessionStatus!=='paused')return send(res,409,{error:'Session is not paused'});v.sessionStatus='active';v.lastResumedAt=Date.now()}else if(d.action==='logout'){v.remainingSeconds=remaining;v.sessionStatus='logged-out';v.lastResumedAt=null}else return send(res,400,{error:'Unsupported session action'});log('customer.session.'+d.action,{voucherId:v.id});save();return send(res,200,{status:v.sessionStatus,remainingSeconds:v.remainingSeconds})}
- if(p==='/api/customer/session/extend'&&req.method==='POST'){const d=await read(req),v=state.vouchers.find(x=>x.sessionId===d.sessionId),rate=state.rates.find(x=>x.id===d.rateId&&x.enabled);if(!v||!rate)return send(res,404,{error:'Session or rate not found'});if(!state.settings.showExtend)return send(res,403,{error:'Extension is disabled'});if(!['active','paused'].includes(v.sessionStatus))return send(res,409,{error:'Session cannot be extended'});let remaining=v.remainingSeconds||0;if(v.sessionStatus==='active'&&v.lastResumedAt)remaining=Math.max(0,remaining-Math.floor((Date.now()-v.lastResumedAt)/1000));v.remainingSeconds=remaining+rate.minutes*60;v.expiresAt=new Date(Date.now()+v.remainingSeconds*1000).toISOString();if(v.sessionStatus==='active')v.lastResumedAt=Date.now();v.price+=rate.price;state.stats.currentSales+=rate.price;state.stats.lifetimeSales+=rate.price;log('customer.session.extended',{voucherId:v.id,rateId:rate.id});save();return send(res,200,{status:v.sessionStatus,remainingSeconds:v.remainingSeconds,expiresAt:v.expiresAt})}
+ if(p==='/api/vouchers/redeem'&&req.method==='POST'){
+  if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
+  const d=await read(req),code=String(d.code||'').trim().toUpperCase();
+  if(!/^[A-Z0-9-]{4,32}$/.test(code))return send(res,400,{error:'Enter a valid voucher code'});
+  const v=state.vouchers.find(x=>x.code===code);
+  if(!v)return send(res,404,{error:'Voucher not found. Check the code and try again.'});
+  if(v.status!=='unused')return send(res,409,{error:'This voucher has already been redeemed or is unavailable.'});
+  const token=crypto.randomBytes(32).toString('base64url'),now=Date.now();
+  v.status='used';v.redeemedAt=new Date(now).toISOString();v.expiresAt=new Date(now+v.minutes*60000).toISOString();
+  v.sessionId=newId('sess');v.sessionTokenHash=sessionTokenHash(token);v.clientAddress=clientAddress(req);
+  v.sessionStatus='active';v.remainingSeconds=v.minutes*60;v.lastResumedAt=now;
+  state.stats.customersServed++;log('voucher.redeemed',{voucherId:v.id});save();
+  setCustomerCookie(res,token,v.minutes*60,!!req.socket.encrypted);
+  return send(res,200,{ok:true,voucher:{code:v.code,minutes:v.minutes,expiresAt:v.expiresAt},session:{status:v.sessionStatus,remainingSeconds:v.remainingSeconds},mode:state.settings.mode});
+ }
+ if(p==='/api/customer/session'&&req.method==='GET'){
+  const v=customerVoucher(req);if(!v)return send(res,401,{error:'No active customer session. Redeem your voucher to connect.'});
+  const remaining=remainingSeconds(v);if(remaining<=0){v.sessionStatus='expired';v.remainingSeconds=0;v.lastResumedAt=null;v.sessionTokenHash=null;log('customer.session.expired',{voucherId:v.id});save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Your internet session has expired.'})}
+  return send(res,200,{code:v.code,status:v.sessionStatus,remainingSeconds:remaining,expiresAt:v.expiresAt,rateName:v.rateName,mode:state.settings.mode});
+ }
+ if(p==='/api/customer/session/action'&&req.method==='POST'){
+  if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
+  const v=customerVoucher(req);if(!v)return send(res,401,{error:'Customer session not authorized.'});
+  const d=await read(req),remaining=remainingSeconds(v);if(remaining<=0){v.sessionStatus='expired';v.remainingSeconds=0;v.sessionTokenHash=null;save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Session expired'})}
+  if(d.action==='pause'){if(!state.settings.showPause)return send(res,403,{error:'Pause is disabled'});if(v.sessionStatus!=='active')return send(res,409,{error:'Session is not active'});v.remainingSeconds=remaining;v.sessionStatus='paused';v.lastResumedAt=null}
+  else if(d.action==='resume'){if(v.sessionStatus!=='paused')return send(res,409,{error:'Session is not paused'});v.sessionStatus='active';v.lastResumedAt=Date.now()}
+  else if(d.action==='logout'){v.remainingSeconds=remaining;v.sessionStatus='logged-out';v.lastResumedAt=null;v.sessionTokenHash=null;clearCustomerCookie(res,!!req.socket.encrypted)}
+  else return send(res,400,{error:'Unsupported session action'});
+  log('customer.session.'+d.action,{voucherId:v.id});save();return send(res,200,{status:v.sessionStatus,remainingSeconds:v.remainingSeconds});
+ }
+ if(p==='/api/customer/session/extend'&&req.method==='POST'){
+  if(!sameOriginIfProvided(req))return send(res,403,{error:'Cross-site request rejected'});
+  const v=customerVoucher(req),d=await read(req),rate=state.rates.find(x=>x.id===d.rateId&&x.enabled);
+  if(!v)return send(res,401,{error:'Customer session not authorized.'});if(!rate)return send(res,404,{error:'Promo rate not found.'});
+  if(!state.settings.showExtend)return send(res,403,{error:'Extension is disabled'});
+  if(!['active','paused'].includes(v.sessionStatus))return send(res,409,{error:'Session cannot be extended'});
+  const remaining=remainingSeconds(v);if(remaining<=0){v.sessionStatus='expired';v.sessionTokenHash=null;save();clearCustomerCookie(res,!!req.socket.encrypted);return send(res,410,{error:'Session expired'})}
+  v.remainingSeconds=remaining+rate.minutes*60;v.expiresAt=new Date(Date.now()+v.remainingSeconds*1000).toISOString();if(v.sessionStatus==='active')v.lastResumedAt=Date.now();
+  v.price+=rate.price;state.stats.currentSales+=rate.price;state.stats.lifetimeSales+=rate.price;log('customer.session.extended',{voucherId:v.id,rateId:rate.id});save();
+  return send(res,200,{status:v.sessionStatus,remainingSeconds:v.remainingSeconds,expiresAt:v.expiresAt});
+ }
  if(p==='/api/stats/reset'&&req.method==='POST'){const d=await read(req);if(!['currentSales','lifetimeSales','customersServed'].includes(d.metric))return send(res,400,{error:'Invalid statistic'});state.stats[d.metric]=0;log('stats.reset',{metric:d.metric});save();return send(res,200,state.stats)}
  if(p==='/api/audit')return send(res,200,state.audit);
  if(p==='/api/router/test'&&req.method==='POST')return send(res,501,{error:'RouterOS adapter pending; no live router connection has been attempted.'});
